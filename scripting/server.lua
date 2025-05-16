@@ -25,41 +25,47 @@ local function canUseVestPlates(source, plates)
     return true
 end
 
-local function formatPlateInfo(plates)
-    local plateCount = {}
-    for _, plate in ipairs(plates) do
-        plateCount[plate.type] = (plateCount[plate.type] or 0) + 1
-    end
-    
-    local description = ""
-    for plateType, count in pairs(plateCount) do
-        local plateName = Config.ArmorPlates[plateType].label or plateType:upper()
-        description = description .. string.format("%s: %d\n", plateName, count)
-    end
-    
-    return description
-end
-
 local function saveVestMetadata(source, vest, metadata)
     if not vest or not metadata then return end
 
     metadata.armor = metadata.armor or 0
     metadata.plates = metadata.plates or {}
-    metadata.durability = metadata.durability or 0
-    metadata.description = formatPlateInfo(metadata.plates)
     
     local maxArmor = 0
-    local totalDurability = 0
     for _, plate in ipairs(metadata.plates) do
         local plateConfig = Config.ArmorPlates[plate.type]
         if plateConfig then
             maxArmor = math.max(maxArmor, plateConfig.maxArmor)
-            totalDurability = totalDurability + ((plateConfig.armorIncrease / plateConfig.maxArmor) * 100)
         end
     end
     
     metadata.maxArmor = maxArmor > 0 and maxArmor or 100
-    metadata.durability = math.min(totalDurability, 100)
+    
+    local durabilityValue = metadata.maxArmor > 0 and math.floor((metadata.armor / metadata.maxArmor) * 100) or 0
+    
+    local description = ""
+    local plateCount = {}
+    
+    for _, plate in ipairs(metadata.plates) do
+        local plateConfig = Config.ArmorPlates[plate.type]
+        local plateName = plateConfig and plateConfig.label or plate.type:upper()
+        plateCount[plateName] = (plateCount[plateName] or 0) + 1
+    end
+    
+    for plateName, count in pairs(plateCount) do
+        if description ~= "" then
+            description = description .. ", "
+        end
+        description = description .. string.format("%s x%d", plateName, count)
+    end
+    
+    metadata.durability = durabilityValue
+    metadata.armor = metadata.armor or 0  -- Ensure armor value exists
+    if description ~= "" then
+        metadata.description = description
+    end
+    
+    TriggerClientEvent('paradise_armorplate:client:updateArmor', source, metadata.armor)
     
     ox_inventory:SetMetadata(source, vest.slot, metadata)
 end
@@ -130,8 +136,49 @@ RegisterNetEvent('paradise_armorplate:server:updateVestArmor', function(slotId, 
     if not vest or vest.name ~= Config.RequiredVest then return end
     
     local metadata = vest.metadata or {}
+    local maxArmor = metadata.maxArmor or 100
+    
     metadata.armor = newArmorValue
-    saveVestMetadata(src, vest, metadata)
+    local newDurability = math.floor((newArmorValue / maxArmor) * 100)
+    metadata.durability = newDurability
+    
+    if newDurability <= 0 and metadata.plates then
+        metadata.plates = {}
+        metadata.maxArmor = 100
+        metadata.description = ""
+        
+        TriggerClientEvent('ox_lib:notify', src, {
+            title = 'Warning',
+            description = 'Your armor plates have been destroyed!',
+            type = 'error'
+        })
+    elseif metadata.plates and #metadata.plates > 0 then
+        local plateCount = {}
+        for _, plate in ipairs(metadata.plates) do
+            local plateConfig = Config.ArmorPlates[plate.type]
+            local plateName = plateConfig and plateConfig.label or plate.type:upper()
+            plateCount[plateName] = (plateCount[plateName] or 0) + 1
+        end
+        
+        local description = ""
+        for plateName, count in pairs(plateCount) do
+            if description ~= "" then
+                description = description .. ", "
+            end
+            description = description .. string.format("%s x%d", plateName, count)
+        end
+        metadata.description = description
+    end
+    
+    ox_inventory:SetMetadata(src, slotId, metadata)
+    
+    if metadata.durability <= 25 and metadata.durability > 0 then
+        TriggerClientEvent('ox_lib:notify', src, {
+            title = 'Warning',
+            description = 'Your armor vest is heavily damaged!',
+            type = 'warning'
+        })
+    end
 end)
 
 RegisterNetEvent('paradise_armorplate:server:getVestArmor', function()

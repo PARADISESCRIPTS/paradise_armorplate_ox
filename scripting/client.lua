@@ -70,16 +70,12 @@ local function ApplyArmorPlate(plateType)
 end
 
 local function UpdateVestMetadata(newArmorValue)
-    if newArmorValue == lastArmorValue then return end
-    
     local vest = ox_inventory:Search('slots', Config.RequiredVest)[1]
     if not vest then return end
     
-    if newArmorValue < lastArmorValue then
+    if vest.metadata and vest.metadata.armor ~= newArmorValue then
         TriggerServerEvent('paradise_armorplate:server:updateVestArmor', vest.slot, newArmorValue)
     end
-    
-    lastArmorValue = newArmorValue
 end
 
 local function SaveOriginalClothing()
@@ -181,6 +177,7 @@ end)
 
 RegisterNetEvent('paradise_armorplate:client:updateArmor', function(armorValue)
     SetPedArmour(PlayerPedId(), armorValue)
+    lastArmorValue = armorValue
     if armorValue > 0 then
         ApplyVestClothing()
     else
@@ -205,51 +202,33 @@ end)
 
 RegisterNetEvent('QBCore:Client:OnPlayerUnload', function()
     SetPedArmour(PlayerPedId(), 0)
+    lastArmorValue = 0
     RemoveVestClothing()
 end)
 
 AddEventHandler('ox_inventory:updateInventory', function(changes)
     if not changes then return end
     
-    local currentVestCount = ox_inventory:Search('count', Config.RequiredVest)
-    
-    if currentVestCount == 0 then
+    local vest = ox_inventory:Search('slots', Config.RequiredVest)[1]
+    if vest then
+        local metadata = vest.metadata or {}
+        local armorValue = metadata.armor or 0
+        SetPedArmour(PlayerPedId(), armorValue)
+        lastArmorValue = armorValue
+        if armorValue > 0 then
+            ApplyVestClothing()
+        else
+            RemoveVestClothing()
+        end
+    else
         SetPedArmour(PlayerPedId(), 0)
         lastArmorValue = 0
         RemoveVestClothing()
-        return
-    end
-    
-    for _, change in pairs(changes) do
-        if type(change) == 'table' and change.name == Config.RequiredVest then
-            if not change.count or change.count == 0 then
-                SetPedArmour(PlayerPedId(), 0)
-                lastArmorValue = 0
-                RemoveVestClothing()
-                return
-            end
-            
-            if change.count and change.count > 0 then
-                local metadata = change.metadata or {}
-                local armorValue = metadata.armor or 0
-                SetPedArmour(PlayerPedId(), armorValue)
-                lastArmorValue = armorValue
-                
-                if armorValue > 0 then
-                    ApplyVestClothing()
-                else
-                    RemoveVestClothing()
-                end
-                
-                TriggerServerEvent('paradise_armorplate:server:getVestArmor')
-                return
-            end
-        end
     end
 end)
 
-AddEventHandler('ox_inventory:itemRemoved', function(name, count, metadata, slot)
-    if name == Config.RequiredVest then
+AddEventHandler('ox_inventory:itemCount', function(name, count)
+    if name == Config.RequiredVest and count == 0 then
         SetPedArmour(PlayerPedId(), 0)
         lastArmorValue = 0
         RemoveVestClothing()
@@ -262,11 +241,17 @@ end)
 
 CreateThread(function()
     while true do
-        local ped = PlayerPedId()
-        local currentArmor = GetPedArmour(ped)
-        
-        UpdateVestMetadata(currentArmor)
-        
-        Wait(1000) -- Check every second
+        if ox_inventory:Search('count', Config.RequiredVest) > 0 then
+            local currentArmor = GetPedArmour(PlayerPedId())
+            
+            if currentArmor ~= lastArmorValue then
+                UpdateVestMetadata(currentArmor)
+                lastArmorValue = currentArmor
+            end
+            
+            Wait(100)
+        else
+            Wait(1000)
+        end
     end
 end)
