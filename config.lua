@@ -22,3 +22,23 @@ Config.ArmorPlates = {
 }
 
 Config.RequiredVest = "armor_vest"
+
+Config.Clothing = {
+    enabled = true,
+    male = {
+        components = {
+            [9] = { -- Vest slot
+                drawable = 15,
+                texture = 0
+            }
+        }
+    },
+    female = {
+        components = {
+            [9] = { -- Vest slot
+                drawable = 17,
+                texture = 0
+            }
+        }
+    }
+}

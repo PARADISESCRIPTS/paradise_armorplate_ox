@@ -1,6 +1,7 @@
 local QBCore = exports['qb-core']:GetCoreObject()
 local ox_inventory = exports.ox_inventory
 local lastArmorValue = 0
+local originalClothing = {}
 
 -----------------------------------------------------------
 -- Functions
@@ -81,6 +82,39 @@ local function UpdateVestMetadata(newArmorValue)
     lastArmorValue = newArmorValue
 end
 
+local function SaveOriginalClothing()
+    local ped = PlayerPedId()
+    originalClothing = {}
+    
+    if Config.Clothing.enabled then
+        for component, _ in pairs(Config.Clothing[IsPedMale(ped) and 'male' or 'female'].components) do
+            originalClothing[component] = {
+                drawable = GetPedDrawableVariation(ped, component),
+                texture = GetPedTextureVariation(ped, component)
+            }
+        end
+    end
+end
+
+local function ApplyVestClothing()
+    if not Config.Clothing.enabled then return end
+    
+    local ped = PlayerPedId()
+    local clothingConfig = Config.Clothing[IsPedMale(ped) and 'male' or 'female']
+    
+    for component, data in pairs(clothingConfig.components) do
+        SetPedComponentVariation(ped, component, data.drawable, data.texture, 0)
+    end
+end
+
+local function RemoveVestClothing()
+    if not Config.Clothing.enabled then return end
+    
+    local ped = PlayerPedId()
+    -- Set vest component (9) to 0
+    SetPedComponentVariation(ped, 9, 0, 0, 0)
+end
+
 -----------------------------------------------------------
 -- Events
 -----------------------------------------------------------
@@ -147,21 +181,31 @@ end)
 
 RegisterNetEvent('paradise_armorplate:client:updateArmor', function(armorValue)
     SetPedArmour(PlayerPedId(), armorValue)
+    if armorValue > 0 then
+        ApplyVestClothing()
+    else
+        RemoveVestClothing()
+    end
 end)
 
 AddEventHandler('QBCore:Client:OnPlayerLoaded', function()
     Wait(1500)
+    SaveOriginalClothing()
     local vest = ox_inventory:Search('slots', Config.RequiredVest)[1]
     if vest then
         local metadata = vest.metadata or {}
         lastArmorValue = metadata.armor or 0
         SetPedArmour(PlayerPedId(), lastArmorValue)
+        if lastArmorValue > 0 then
+            ApplyVestClothing()
+        end
     end
     TriggerServerEvent('paradise_armorplate:server:getVestArmor')
 end)
 
 RegisterNetEvent('QBCore:Client:OnPlayerUnload', function()
     SetPedArmour(PlayerPedId(), 0)
+    RemoveVestClothing()
 end)
 
 AddEventHandler('ox_inventory:updateInventory', function(changes)
@@ -172,16 +216,30 @@ AddEventHandler('ox_inventory:updateInventory', function(changes)
     if currentVestCount == 0 then
         SetPedArmour(PlayerPedId(), 0)
         lastArmorValue = 0
+        RemoveVestClothing()
         return
     end
     
     for _, change in pairs(changes) do
         if type(change) == 'table' and change.name == Config.RequiredVest then
+            if not change.count or change.count == 0 then
+                SetPedArmour(PlayerPedId(), 0)
+                lastArmorValue = 0
+                RemoveVestClothing()
+                return
+            end
+            
             if change.count and change.count > 0 then
                 local metadata = change.metadata or {}
                 local armorValue = metadata.armor or 0
                 SetPedArmour(PlayerPedId(), armorValue)
                 lastArmorValue = armorValue
+                
+                if armorValue > 0 then
+                    ApplyVestClothing()
+                else
+                    RemoveVestClothing()
+                end
                 
                 TriggerServerEvent('paradise_armorplate:server:getVestArmor')
                 return
@@ -190,10 +248,11 @@ AddEventHandler('ox_inventory:updateInventory', function(changes)
     end
 end)
 
-AddEventHandler('ox_inventory:itemCount', function(name, count)
-    if name == Config.RequiredVest and count == 0 then
+AddEventHandler('ox_inventory:itemRemoved', function(name, count, metadata, slot)
+    if name == Config.RequiredVest then
         SetPedArmour(PlayerPedId(), 0)
         lastArmorValue = 0
+        RemoveVestClothing()
     end
 end)
 
