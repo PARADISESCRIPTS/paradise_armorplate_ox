@@ -40,6 +40,30 @@ local function formatPlateInfo(plates)
     return description
 end
 
+local function saveVestMetadata(source, vest, metadata)
+    if not vest or not metadata then return end
+
+    metadata.armor = metadata.armor or 0
+    metadata.plates = metadata.plates or {}
+    metadata.durability = metadata.durability or 0
+    metadata.description = formatPlateInfo(metadata.plates)
+    
+    local maxArmor = 0
+    local totalDurability = 0
+    for _, plate in ipairs(metadata.plates) do
+        local plateConfig = Config.ArmorPlates[plate.type]
+        if plateConfig then
+            maxArmor = math.max(maxArmor, plateConfig.maxArmor)
+            totalDurability = totalDurability + ((plateConfig.armorIncrease / plateConfig.maxArmor) * 100)
+        end
+    end
+    
+    metadata.maxArmor = maxArmor > 0 and maxArmor or 100
+    metadata.durability = math.min(totalDurability, 100)
+    
+    ox_inventory:SetMetadata(source, vest.slot, metadata)
+end
+
 -----------------------------------------------------------
 -- Item Setup
 -----------------------------------------------------------
@@ -86,9 +110,7 @@ RegisterNetEvent('paradise_armorplate:server:applyPlateToVest', function(plateTy
     })
     metadata.plates = plates
     
-    metadata.durability = (newArmor / armorConfig.maxArmor) * 100
-    metadata.description = formatPlateInfo(plates)
-    ox_inventory:SetMetadata(src, vest.slot, metadata)
+    saveVestMetadata(src, vest, metadata)
     ox_inventory:RemoveItem(src, armorConfig.item, 1)
     TriggerClientEvent('paradise_armorplate:client:updateArmor', src, newArmor)
     
@@ -108,13 +130,19 @@ RegisterNetEvent('paradise_armorplate:server:updateVestArmor', function(slotId, 
     if not vest or vest.name ~= Config.RequiredVest then return end
     
     local metadata = vest.metadata or {}
-    local plates = metadata.plates or {}
-    
     metadata.armor = newArmorValue
-    metadata.durability = (newArmorValue / (metadata.maxArmor or 100)) * 100
-    metadata.description = formatPlateInfo(plates)
+    saveVestMetadata(src, vest, metadata)
+end)
+
+RegisterNetEvent('paradise_armorplate:server:getVestArmor', function()
+    local src = source
+    local vest = ox_inventory:Search(src, 'slots', Config.RequiredVest)[1]
     
-    ox_inventory:SetMetadata(src, slotId, metadata)
+    if vest then
+        local metadata = vest.metadata or {}
+        saveVestMetadata(src, vest, metadata)
+        TriggerClientEvent('paradise_armorplate:client:updateArmor', src, metadata.armor or 0)
+    end
 end)
 
 -----------------------------------------------------------

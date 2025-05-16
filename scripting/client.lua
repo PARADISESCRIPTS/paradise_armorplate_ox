@@ -150,6 +150,13 @@ RegisterNetEvent('paradise_armorplate:client:updateArmor', function(armorValue)
 end)
 
 AddEventHandler('QBCore:Client:OnPlayerLoaded', function()
+    Wait(1500)
+    local vest = ox_inventory:Search('slots', Config.RequiredVest)[1]
+    if vest then
+        local metadata = vest.metadata or {}
+        lastArmorValue = metadata.armor or 0
+        SetPedArmour(PlayerPedId(), lastArmorValue)
+    end
     TriggerServerEvent('paradise_armorplate:server:getVestArmor')
 end)
 
@@ -175,6 +182,8 @@ AddEventHandler('ox_inventory:updateInventory', function(changes)
                 local armorValue = metadata.armor or 0
                 SetPedArmour(PlayerPedId(), armorValue)
                 lastArmorValue = armorValue
+                
+                TriggerServerEvent('paradise_armorplate:server:getVestArmor')
                 return
             end
         end
